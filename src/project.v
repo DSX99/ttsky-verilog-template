@@ -16,12 +16,16 @@ module tt_um_example (
     input  wire       rst_n     // reset_n - low to reset
 );
 
-  // All output pins must be assigned. If not used, assign to 0.
-  assign uo_out  = ui_in + uio_in;  // Example: ou_out is the sum of ui_in and uio_in
+  assign uo_out[7:2] = 0;
   assign uio_out = 0;
   assign uio_oe  = 0;
 
   // List all unused inputs to prevent warnings
-  wire _unused = &{ena, clk, rst_n, 1'b0};
+  wire _unused = &{ena, ui_in};
+
+  top_module #(.WIDTH(512)) ecc (
+    .cs(ui_in[0]), .spi_clk(ui_in[1]), .spi_pad_MOSI(ui_in[2]),
+    .clk(clk), .rst(~rst_n), .rdy(uo_out[0]), .spi_pad_MISO(uo_out[1])
+  );
 
 endmodule
