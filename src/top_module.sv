@@ -15,48 +15,7 @@ module top_module #(
     logic [$clog2(WIDTH)+2:0] count_spi;
     logic [$clog2(WIDTH)-1:0] count;
     logic [3:0] state;
-    logic req, alu_req, inv_req, alu_rdy, inv_rdy, first, mult_req, mult_rdy, start_sending=0, sent=0, alu_mult_only, did_it;
-
-    always_ff @(posedge spi_clk) begin
-        if(cs & !start_sending) begin
-            count_spi<=count_spi+1;
-            if(count_spi<WIDTH) begin
-                P1_x<=P1_x>>1;
-                P1_x[WIDTH-1]<=spi_pad_MOSI;
-            end else if(count_spi<2*WIDTH) begin
-                P1_y<=P1_y>>1;
-                P1_y[WIDTH-1]<=spi_pad_MOSI;
-            end else if(count_spi<3*WIDTH) begin
-                a<=a>>1;
-                a[WIDTH-1]<=spi_pad_MOSI;
-            end else if(count_spi<4*WIDTH) begin
-                mod<=mod>>1;
-                mod[WIDTH-1]<=spi_pad_MOSI;
-            end else if(count_spi<5*WIDTH) begin
-                k<=k>>1;
-                k[WIDTH-1]<=spi_pad_MOSI;
-            end else if(count_spi==5*WIDTH) begin
-                req<=1;
-            end else begin
-                req<=0;
-            end
-        end else begin
-            count_spi<=0;
-            req<=0;
-        end
-        if(rdy) begin
-            count_spi<=count_spi+1;
-            if(!start_sending) begin
-                count_spi<=0;
-                start_sending<=1;
-            end else begin
-                if(count_spi<512) P0_x<={P0_x[0],P0_x[WIDTH-1:1]};
-                else if(count_spi<1024) P0_y<={P0_y[0],P0_y[WIDTH-1:1]};
-                else rdy<=0;
-            end
-
-        end
-    end
+    logic req, alu_req, inv_req, alu_rdy, inv_rdy, first, mult_req, mult_rdy, start_sending, sent, alu_mult_only, did_it, prev_spi_clk;
 
     localparam q = 512'hFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF27E69532F48D89116FF22B8D4E0560609B4B38ABFAD2B85DCACDB1411F10B275;
 
@@ -64,8 +23,11 @@ module top_module #(
         first=0;
         sum_x=0;sum_y=0;sum_z=0;
         dub_x=0;dub_y=0;dub_z=0;
+        mult_a=0;mult_b=0;
+        mid=0;add_out=0;
         inv_in=0;
         alu_mult_only=0;
+        spi_pad_MISO=0;
         case(state)
             0: begin
                 if(req) begin
@@ -130,130 +92,174 @@ module top_module #(
     always_ff @(posedge clk or posedge rst) begin
         if(rst)begin
             P0_x<=0; P0_y<=0; P0_z<=569; P1_x<=0; P1_y<=0; P1_z<=569;
-            a<=0; mod<=0; k<=0; count_spi<=0; rdy<=0; req<=0;
+            a<=0; mod<=0; k<=0; count_spi<=0; rdy<=0; req<=0; prev_spi_clk<=0;
             state<=0; count<=0; sent<=0; start_sending<=0; did_it<=0;
-        end
-        inv_req<=0;
-        mult_req<=0;
-        alu_req<=0;
-        case(state)
-            0: begin
-                if(req) begin
-                    rdy<=0;
-                    state<=1;
-                    k<=add_out;
+        end else begin
+            inv_req<=0;
+            mult_req<=0;
+            alu_req<=0;
+            case(state)
+                0: begin
+                    if(req) begin
+                        rdy<=0;
+                        state<=1;
+                        k<=add_out;
+                    end
                 end
-            end
-            1: begin
-                if(!sent) alu_req<=1;
-                sent<=1;
-                req<=0;
-                if(alu_rdy) begin
-                    P0_x<=summed_x; P0_y<=summed_y; P0_z<=summed_z;
-                    P1_x<=dubbed_x; P1_y<=dubbed_y; P1_z<=dubbed_z;
-                    state<=2;
-                    sent<=0;
-                    count<=count-1;
-                end
-            end
-            2: begin
-                if(!sent) begin
-                    alu_req<=1;
-                end
-                sent<=1;
-                if(alu_rdy) begin
-                    if(k[count]) begin
+                1: begin
+                    if(!sent) alu_req<=1;
+                    sent<=1;
+                    req<=0;
+                    if(alu_rdy) begin
                         P0_x<=summed_x; P0_y<=summed_y; P0_z<=summed_z;
                         P1_x<=dubbed_x; P1_y<=dubbed_y; P1_z<=dubbed_z;
+                        state<=2;
+                        sent<=0;
+                        count<=count-1;
+                    end
+                end
+                2: begin
+                    if(!sent) begin
+                        alu_req<=1;
+                    end
+                    sent<=1;
+                    if(alu_rdy) begin
+                        if(k[count]) begin
+                            P0_x<=summed_x; P0_y<=summed_y; P0_z<=summed_z;
+                            P1_x<=dubbed_x; P1_y<=dubbed_y; P1_z<=dubbed_z;
+                        end else begin
+                            P1_x<=summed_x; P1_y<=summed_y; P1_z<=summed_z;
+                            P0_x<=dubbed_x; P0_y<=dubbed_y; P0_z<=dubbed_z;
+                        end
+
+                        sent<=0;
+                        if(count==0 & did_it) begin
+                            state<=3;
+                        end else begin
+                            count<=count-1;
+                            did_it<=1;
+                        end
+                    end
+                end
+                3: begin
+                    if(!sent) alu_req<=1;
+                    sent<=1;
+                    if(alu_rdy) begin
+                        P0_x<=dubbed_x;
+                        sent<=0;
+                        state<=4;
+                    end
+                end
+                4: begin
+                    if(!sent) alu_req<=1;
+                    sent<=1;
+                    if(alu_rdy) begin
+                        P0_y<=dubbed_x;
+                        sent<=0;
+                        state<=5;
+                    end
+                end
+                5: begin
+                    if(!sent) alu_req<=1;
+                    sent<=1;
+                    if(alu_rdy) begin
+                        P1_z<=dubbed_x;
+                        sent<=0;
+                        state<=6;
+                    end
+                end
+                6: begin
+                    if(!sent) inv_req<=1;
+                    sent<=1;
+                    if(inv_rdy) begin
+                        P1_z<=inv_out;
+                        sent<=0;
+                        state<=7;
+                    end
+                end
+                7: begin
+                    if(!sent) mult_req<=1;
+                    sent<=1;
+                    if(mult_rdy) begin
+                        P0_z<=mult_out;
+                        sent<=0;
+                        state<=8;
+                    end
+                end
+                8: begin
+                    if(!sent) mult_req<=1;
+                    sent<=1;
+                    if(mult_rdy) begin
+                        P0_x<=mult_out;
+                        sent<=0;
+                        state<=9;
+                    end
+                end
+                9: begin
+                    if(!sent) mult_req<=1;
+                    sent<=1;
+                    if(mult_rdy) begin
+                        P0_z<=mult_out;
+                        sent<=0;
+                        state<=10;
+                    end
+                end     
+                10: begin
+                    if(!sent) mult_req<=1;
+                    sent<=1;
+                    if(mult_rdy) begin
+                        P0_y<=mult_out;
+                        sent<=0;
+                        did_it<=0;
+                        state<=0;
+                        rdy<=1;
+                    end
+                end        
+            endcase
+            
+            if(spi_clk | !spi_clk) prev_spi_clk<=spi_clk;
+
+            if(spi_clk & spi_clk!=prev_spi_clk) begin
+                if(cs & !start_sending) begin
+                    count_spi<=count_spi+1;
+                    if(count_spi<WIDTH) begin
+                        P1_x<=P1_x>>1;
+                        P1_x[WIDTH-1]<=spi_pad_MOSI;
+                    end else if(count_spi<2*WIDTH) begin
+                        P1_y<=P1_y>>1;
+                        P1_y[WIDTH-1]<=spi_pad_MOSI;
+                    end else if(count_spi<3*WIDTH) begin
+                        a<=a>>1;
+                        a[WIDTH-1]<=spi_pad_MOSI;
+                    end else if(count_spi<4*WIDTH) begin
+                        mod<=mod>>1;
+                        mod[WIDTH-1]<=spi_pad_MOSI;
+                    end else if(count_spi<5*WIDTH) begin
+                        k<=k>>1;
+                        k[WIDTH-1]<=spi_pad_MOSI;
+                    end else if(count_spi==5*WIDTH) begin
+                        req<=1;
                     end else begin
-                        P1_x<=summed_x; P1_y<=summed_y; P1_z<=summed_z;
-                        P0_x<=dubbed_x; P0_y<=dubbed_y; P0_z<=dubbed_z;
+                        req<=0;
+                    end
+                end else begin
+                    count_spi<=0;
+                    req<=0;
+                end
+                if(rdy) begin
+                    count_spi<=count_spi+1;
+                    if(!start_sending) begin
+                        count_spi<=0;
+                        start_sending<=1;
+                    end else begin
+                        if(count_spi<512) P0_x<={P0_x[0],P0_x[WIDTH-1:1]};
+                        else if(count_spi<1024) P0_y<={P0_y[0],P0_y[WIDTH-1:1]};
+                        else rdy<=0;
                     end
 
-                    sent<=0;
-                    if(count==0 & did_it) begin
-                        state<=3;
-                    end else begin
-                        count<=count-1;
-                        did_it<=1;
-                    end
                 end
             end
-            3: begin
-                if(!sent) alu_req<=1;
-                sent<=1;
-                if(alu_rdy) begin
-                    P0_x<=dubbed_x;
-                    sent<=0;
-                    state<=4;
-                end
-            end
-            4: begin
-                if(!sent) alu_req<=1;
-                sent<=1;
-                if(alu_rdy) begin
-                    P0_y<=dubbed_x;
-                    sent<=0;
-                    state<=5;
-                end
-            end
-            5: begin
-                if(!sent) alu_req<=1;
-                sent<=1;
-                if(alu_rdy) begin
-                    P1_z<=dubbed_x;
-                    sent<=0;
-                    state<=6;
-                end
-            end
-            6: begin
-                if(!sent) inv_req<=1;
-                sent<=1;
-                if(inv_rdy) begin
-                    P1_z<=inv_out;
-                    sent<=0;
-                    state<=7;
-                end
-            end
-            7: begin
-                if(!sent) mult_req<=1;
-                sent<=1;
-                if(mult_rdy) begin
-                    P0_z<=mult_out;
-                    sent<=0;
-                    state<=8;
-                end
-            end
-            8: begin
-                if(!sent) mult_req<=1;
-                sent<=1;
-                if(mult_rdy) begin
-                    P0_x<=mult_out;
-                    sent<=0;
-                    state<=9;
-                end
-            end
-            9: begin
-                if(!sent) mult_req<=1;
-                sent<=1;
-                if(mult_rdy) begin
-                    P0_z<=mult_out;
-                    sent<=0;
-                    state<=10;
-                end
-            end     
-            10: begin
-                if(!sent) mult_req<=1;
-                sent<=1;
-                if(mult_rdy) begin
-                    P0_y<=mult_out;
-                    sent<=0;
-                    did_it<=0;
-                    state<=0;
-                    rdy<=1;
-                end
-            end        
-        endcase
+        end
     end
 
 point_alu #(.WIDTH(WIDTH)) alu (
@@ -275,6 +281,401 @@ mod_mult #(.WIDTH(512)) mult (
     .mult_a(mult_a), .mult_b(mult_b), .mod(mod),
     .mult_out(mult_out), .rdy(mult_rdy)
 );
+
+endmodule
+
+module mod_mult #(
+    parameter WIDTH = 512
+) (
+    input  logic             clk,
+    input  logic             rst,
+    input  logic             req,
+    input  logic [WIDTH-1:0] mult_a,
+    input  logic [WIDTH-1:0] mult_b,
+    input  logic [WIDTH-1:0] mod,
+    
+    output logic [WIDTH-1:0] mult_out,
+    output logic             rdy
+);
+
+    typedef enum logic [1:0] {
+        IDLE, 
+        CALC, 
+        DONE_ST
+    } state_t;
+    
+    state_t state;
+
+    logic [WIDTH-1:0]       a_reg, b_reg, m_reg;
+    logic [$clog2(WIDTH)-1:0] count;
+    logic [WIDTH+1:0]       p_reg; 
+    logic [WIDTH+1:0]       next_p, trial_val;
+
+    always_comb begin
+        trial_val = (p_reg << 1) + (a_reg[WIDTH-1] ? {2'b0,b_reg} : 0);
+
+        if (trial_val >= {1'b0,m_reg, 1'b0}) begin
+            next_p = trial_val - {m_reg, 1'b0};
+        end else if (trial_val >= {2'b0,m_reg}) begin
+            next_p = trial_val - {2'b0,m_reg};
+        end else begin
+            next_p = trial_val;
+        end
+    end
+
+
+    always_ff @(posedge clk or posedge rst) begin
+        if (rst) begin
+            state  <= IDLE;
+            p_reg  <= '0;
+            a_reg  <= '0;
+            b_reg  <= '0;
+            m_reg  <= '0;
+            count  <= '0;
+            rdy   <= 1'b0;
+            mult_out <= '0;
+        end else begin
+            case (state)
+                IDLE: begin
+                    rdy <= 1'b0;
+                    if (req) begin
+                        a_reg <= mult_a;
+                        b_reg <= mult_b;
+                        m_reg <= mod;
+                        p_reg <= '0;
+                        count <= 9'(WIDTH - 1);
+                        state <= CALC;
+                    end
+                end
+
+                CALC: begin
+                    p_reg <= next_p;
+                    a_reg <= {a_reg[WIDTH-2:0], 1'b0};
+                    
+                    if (count == 0) begin
+                        state <= DONE_ST;
+                    end else begin
+                        count <= count - 1;
+                    end
+                end
+
+                DONE_ST: begin
+                    mult_out <= p_reg[WIDTH-1:0];
+                    rdy   <= 1'b1;
+                    state  <= IDLE;
+                end
+                
+                default: state <= IDLE;
+            endcase
+        end
+    end
+
+endmodule
+
+module inverse #(
+    parameter WIDTH = 512
+)(
+    input  logic             clk,
+    input  logic             rst,
+    input  logic             req,
+    input  logic [WIDTH-1:0] inv_in,
+    input  logic [WIDTH-1:0] mod,
+    output logic [WIDTH-1:0] inv_out,
+    output logic             rdy
+);
+
+    // Size of the delta step counter. Max iterations for BY is bounded by ~1.4 * WIDTH.
+    // For 512 bits, log2(512) = 9. 12 bits easily covers > 4000 steps.
+    localparam DELTA_W = $clog2(WIDTH) + 3;
+
+    // FSM States
+    typedef enum logic [1:0] {
+        IDLE = 2'b00,
+        CALC = 2'b01,
+        DONE = 2'b10
+    } state_t;
+    state_t state, next_state;
+
+    // --- State Registers ---
+    // f and g can be negative, so we use signed representation. 
+    // WIDTH+2 prevents overflow during (g + f) prior to shifting.
+    logic signed [WIDTH+1:0] f_reg, next_f; 
+    logic signed [WIDTH+1:0] g_reg, next_g;
+    logic signed [DELTA_W-1:0] delta_reg, next_delta;
+    
+    // d and e are kept strictly positive in the range [0, M-1].
+    // WIDTH+1 size handles temporary carries prior to modulo reduction.
+    logic [WIDTH:0] d_reg, next_d; 
+    logic [WIDTH:0] e_reg, next_e;
+
+    logic [WIDTH-1:0] mod_reg;
+
+    // --- Combinational Nodes ---
+    logic c; 
+    logic swap;
+    logic signed [DELTA_W-1:0] delta_prime;
+    logic signed [WIDTH+1:0]   f_prime, g_prime;
+    logic [WIDTH:0]            d_prime, e_prime;
+    logic [WIDTH:0]            E_val; // For modulo addition/division
+
+    // Ready signal
+    assign rdy = (state == DONE);
+
+    // --- Sequential Logic ---
+    always_ff @(posedge clk or posedge rst) begin
+        if (rst) begin
+            state     <= IDLE;
+            f_reg     <= '0;
+            g_reg     <= '0;
+            delta_reg <= '0;
+            d_reg     <= '0;
+            e_reg     <= '0;
+            mod_reg   <= '0;
+            inv_out   <= '0;
+        end else begin
+            state     <= next_state;
+            f_reg     <= next_f;
+            g_reg     <= next_g;
+            delta_reg <= next_delta;
+            d_reg     <= next_d;
+            e_reg     <= next_e;
+
+            if (req && state == IDLE) begin
+                mod_reg <= mod; // Latch modulus safely
+            end
+
+            // Result resolution block
+            if (next_state == DONE && state == CALC) begin
+                // When g reaches 0, the GCD is in f, and the inverse is in d.
+                // If f == -1, the inverse must be negated modulo M.
+                if (f_reg == '1) begin
+                     inv_out <= (d_reg == 0) ? '0 : (mod_reg - d_reg[WIDTH-1:0]);
+                end else begin
+                     inv_out <= d_reg[WIDTH-1:0];
+                end
+            end
+        end
+    end
+
+    // --- Combinational Divstep Logic ---
+    always_comb begin
+        // Defaults to latch current state
+        next_state = state;
+        next_f     = f_reg;
+        next_g     = g_reg;
+        next_delta = delta_reg;
+        next_d     = d_reg;
+        next_e     = e_reg;
+        
+        // 1. Condition Evaluation
+        c    = g_reg[0];                 // Is g odd?
+        swap = c & (delta_reg > 0);      // BY Swap condition
+
+        // 2. Pre-calculation (Swap multiplexer)
+        if (swap) begin
+            delta_prime = -delta_reg;
+            f_prime     = g_reg;
+            g_prime     = -f_reg;
+            d_prime     = e_reg;
+            // E prime must be -d mod M
+            e_prime     = (d_reg == 0) ? '0 : (mod_reg - d_reg); 
+        end else begin
+            delta_prime = delta_reg;
+            f_prime     = f_reg;
+            g_prime     = g_reg;
+            d_prime     = d_reg;
+            e_prime     = e_reg;
+        end
+
+        // 3. Modulo Arithmetic & Division by 2 logic
+        if (c) begin
+            // (g' + f') will always be even here. 
+            // We use $signed to ensure SystemVerilog infers an Arithmetic Shift Right (>>>)
+            E_val = e_prime + d_prime;
+            if (E_val >= {1'b0,mod_reg}) E_val = E_val - mod_reg; // Modulo M reduction
+        end else begin
+            E_val = e_prime;
+        end
+
+        // 4. Next-State assignments & FSM transitions
+        case (state)
+            IDLE: begin
+                if (req) begin
+                    next_state = CALC;
+                    // Zero-extend inputs to positive signed values
+                    next_f     = $signed({2'b00, mod}); 
+                    next_g     = $signed({2'b00, inv_in});
+                    next_delta = 1;
+                    next_d     = '0;
+                    next_e     = 1;
+                end
+            end
+            
+            CALC: begin
+                if (g_reg == 0) begin
+                    next_state = DONE; 
+                end else begin
+                    // Apply BY Divstep updates
+                    next_delta = delta_prime + 1;
+                    next_f     = f_prime;
+                    next_d     = d_prime;
+
+                    if (c) begin
+                        next_g = $signed(g_prime + f_prime) >>> 1; 
+                    end else begin
+                        next_g = $signed(g_prime) >>> 1;
+                    end
+
+                    // Divide E_val by 2 modulo M
+                    if (E_val[0]) begin
+                        next_e = (E_val + mod_reg) >> 1;
+                    end else begin
+                        next_e = E_val >> 1;
+                    end
+                end
+            end
+            
+            DONE: begin
+                // Remain DONE for one cycle, then automatically drop to IDLE
+                // You can condition this on a hand-shake signal like `req == 0` if preferred
+                next_state = IDLE; 
+            end
+            
+            default: next_state = IDLE;
+        endcase
+    end
+
+endmodule
+
+module modadd #( //module for addition, ctrl=1 subtraction, ctrl=0 addition
+    parameter WIDTH = 512
+)(
+    input logic ctrl,
+    input logic [WIDTH-1:0] a,
+    input logic [WIDTH-1:0] b,
+    input logic [WIDTH-1:0] mod,
+    output logic [WIDTH-1:0] result
+);
+    logic [WIDTH:0] val_1;
+    logic [WIDTH:0] val_2;
+
+    always_comb begin
+        if(ctrl) begin
+            val_1 = {1'b0,a} - {1'b0,b};
+            val_2 = val_1[WIDTH-1:0] + mod;
+            result = (a>=b) ? val_1[WIDTH-1:0] : val_2[WIDTH-1:0];
+        end else begin
+            val_1 = {1'b0,a} + {1'b0,b};
+            val_2 = val_1[WIDTH-1:0] - mod;
+            result = (val_1>={1'b0,mod}) ? val_2[WIDTH-1:0] : val_1[WIDTH-1:0];
+        end
+    end
+
+endmodule
+
+module modmul#( // radix 4 montgomery multiplication, requires a and b be in a*R form alreadt
+    parameter WIDTH = 512
+)(
+    input  logic              clk,
+    input  logic              rst,
+    input  logic              req,
+    input  logic [WIDTH-1:0]  a,
+    input  logic [WIDTH-1:0]  b,
+    input  logic [WIDTH-1:0]  mod,
+    output logic [WIDTH-1:0]  result,
+    output logic              rdy
+);
+
+    typedef enum logic [1:0] {
+        IDLE     = 2'b00,
+        PRECOMP  = 2'b01, // Calculate 3b and 3mod
+        COMPUTE  = 2'b10, // Main loop (2 bits per cycle)
+        FINISH   = 2'b11  // Final reduction
+    } state_t;
+
+    state_t state;
+
+    logic [WIDTH+2:0] S;
+    logic [WIDTH-1:0] a_reg;
+    logic [WIDTH+1:0] b3;
+    logic [WIDTH+1:0] mod3; 
+    logic [1:0] mod_inv;
+    logic [$clog2(WIDTH/2):0] count;
+
+    logic [1:0] a_i;
+    logic [1:0] q_i;
+    logic [WIDTH+1:0] term_b;
+    logic [WIDTH+1:0] term_mod;
+
+    assign a_i = a_reg[1:0];
+
+    always_comb begin
+        case (a_i)
+            2'b01:   term_b = {2'b0, b};
+            2'b10:   term_b = {2'b0, b}<<1;
+            2'b11:   term_b = b3;
+            default: term_b = '0;
+        endcase
+    end
+
+    assign q_i = ( (S[1:0] + term_b[1:0]) * mod_inv ) & 2'b11;
+
+    always_comb begin
+        case (q_i)
+            2'b01:   term_mod = {2'b0, mod};
+            2'b10:   term_mod = {2'b0, mod}<<1;
+            2'b11:   term_mod = mod3;
+            default: term_mod = '0;
+        endcase
+    end
+
+    always_ff @(posedge clk or posedge rst) begin
+        if (rst) begin
+            state <= IDLE;
+            rdy <= 1'b0;
+            result <= '0;
+            S <= '0;
+        end else begin
+            case (state)
+                IDLE: begin
+                    rdy <= 1'b0;
+                    if (req) begin
+                        a_reg <= a;
+                        mod_inv <= (mod[1]) ? 2'b01 : 2'b11; 
+                        state <= PRECOMP;
+                    end
+                end
+
+                PRECOMP: begin
+                    b3 <= ({2'b0, b} << 1) + {2'b0, b};
+                    mod3 <= ({2'b0, mod} << 1) + {2'b0, mod};
+                    S <= '0;
+                    count <= 9'(WIDTH / 2);
+                    state <= COMPUTE;
+                end
+
+                COMPUTE: begin
+                    if (count > 0) begin
+                        S <= (S + term_b + term_mod) >> 2;
+                        a_reg <= a_reg >> 2;
+                        count <= count - 1;
+                    end else begin
+                        state <= FINISH;
+                    end
+                end
+
+                FINISH: begin
+                    if (S >= {3'b0,mod}) begin
+                        result <= 512'(S - {3'b0,mod});
+                    end else begin
+                        result <= S[WIDTH-1:0];
+                    end
+                    rdy <= 1'b1;
+                    state <= IDLE;
+                end
+            endcase
+        end
+    end
 
 endmodule
 
@@ -308,6 +709,16 @@ module point_alu #(
 
     always_comb begin    
         
+        Psum_x=0;Psum_y=0;Psum_z=0;Pd_x=0;Pd_y=0;Pd_z=0;
+        mult_req[0] = 0; mult_a[0] = '0; mult_b[0] = '0;
+        mult_req[1] = 0; mult_a[1] = '0; mult_b[1] = '0;
+
+        mult_a[0] = 0;   mult_b[0] = 0;   mult_req[0] = 0;
+        mult_a[1] = 0;   mult_b[1] = 0;   mult_req[1] = 0;
+        add_a[0]  = 0; add_b[0] = 0;
+        add_a[1]  = 0; add_b[1] = 0;
+        add_ctrl[0]=0;add_ctrl[1]=0;
+
         if(rdy) begin
             Pd_x = mem[2]; Pd_y = mem[3]; Pd_z = mem[4];
             if(!first)begin
@@ -316,14 +727,6 @@ module point_alu #(
                 Psum_x = P1_x;  Psum_y = P1_y; Psum_z = P1_z;
             end
         end
-
-        mult_req[0] = 0; mult_a[0] = '0; mult_b[0] = '0;
-        mult_req[1] = 0; mult_a[1] = '0; mult_b[1] = '0;
-
-        mult_a[0] = 0;   mult_b[0] = 0;   mult_req[0] = 0;
-        mult_a[1] = 0;   mult_b[1] = 0;   mult_req[1] = 0;
-        add_a[0]  = 0; add_b[0] = 0;
-        add_a[1]  = 0; add_b[1] = 0;
 
         case(state)
             0: begin
@@ -531,300 +934,4 @@ module point_alu #(
     modadd #(.WIDTH(WIDTH)) add0  (.ctrl(add_ctrl[0]), .a(add_a[0]), .b(add_b[0]), .mod(mod), .result(add_out[0]));
     modadd #(.WIDTH(WIDTH)) add1  (.ctrl(add_ctrl[1]), .a(add_a[1]), .b(add_b[1]), .mod(mod), .result(add_out[1]));
 
-endmodule
-
-module mod_mult #(
-    parameter WIDTH = 512
-) (
-    input  logic             clk,
-    input  logic             rst,
-    input  logic             req,
-    input  logic [WIDTH-1:0] mult_a,
-    input  logic [WIDTH-1:0] mult_b,
-    input  logic [WIDTH-1:0] mod,
-    
-    output logic [WIDTH-1:0] mult_out,
-    output logic             rdy
-);
-
-    typedef enum logic [1:0] {
-        IDLE, 
-        CALC, 
-        DONE_ST
-    } state_t;
-    
-    state_t state;
-
-    logic [WIDTH-1:0]       a_reg, b_reg, m_reg;
-    logic [$clog2(WIDTH)-1:0] count;
-    logic [WIDTH+1:0]       p_reg; 
-    logic [WIDTH+1:0]       next_p, trial_val;
-
-    always_comb begin
-        trial_val = (p_reg << 1) + (a_reg[WIDTH-1] ? {2'b0,b_reg} : 0);
-
-        if (trial_val >= {1'b0,m_reg, 1'b0}) begin
-            next_p = trial_val - {m_reg, 1'b0};
-        end else if (trial_val >= {2'b0,m_reg}) begin
-            next_p = trial_val - {2'b0,m_reg};
-        end else begin
-            next_p = trial_val;
-        end
-    end
-
-
-    always_ff @(posedge clk or posedge rst) begin
-        if (rst) begin
-            state  <= IDLE;
-            p_reg  <= '0;
-            a_reg  <= '0;
-            b_reg  <= '0;
-            m_reg  <= '0;
-            count  <= '0;
-            rdy   <= 1'b0;
-            mult_out <= '0;
-        end else begin
-            case (state)
-                IDLE: begin
-                    rdy <= 1'b0;
-                    if (req) begin
-                        a_reg <= mult_a;
-                        b_reg <= mult_b;
-                        m_reg <= mod;
-                        p_reg <= '0;
-                        count <= 511;
-                        state <= CALC;
-                    end
-                end
-
-                CALC: begin
-                    p_reg <= next_p;
-                    a_reg <= {a_reg[WIDTH-2:0], 1'b0};
-                    
-                    if (count == 0) begin
-                        state <= DONE_ST;
-                    end else begin
-                        count <= count - 1;
-                    end
-                end
-
-                DONE_ST: begin
-                    mult_out <= p_reg[WIDTH-1:0];
-                    rdy   <= 1'b1;
-                    state  <= IDLE;
-                end
-                
-                default: state <= IDLE;
-            endcase
-        end
-    end
-
-endmodule
-
-module modmul#( // radix 4 montgomery multiplication, requires and b be in a*R form alreadt
-    parameter WIDTH = 512
-)(
-    input  logic              clk,
-    input  logic              rst,
-    input  logic              req,
-    input  logic [WIDTH-1:0]  a,
-    input  logic [WIDTH-1:0]  b,
-    input  logic [WIDTH-1:0]  mod,
-    output logic [WIDTH-1:0]  result,
-    output logic              rdy
-);
-
-    typedef enum logic [1:0] {
-        IDLE     = 2'b00,
-        PRECOMP  = 2'b01, // Calculate 3b and 3mod
-        COMPUTE  = 2'b10, // Main loop (2 bits per cycle)
-        FINISH   = 2'b11  // Final reduction
-    } state_t;
-
-    state_t state;
-
-    logic [WIDTH+2:0] S;
-    logic [WIDTH-1:0] a_reg;
-    logic [WIDTH+1:0] b3;
-    logic [WIDTH+1:0] mod3; 
-    logic [1:0] mod_inv;
-    logic [$clog2(WIDTH/2):0] count;
-
-    logic [1:0] a_i;
-    logic [1:0] q_i;
-    logic [WIDTH+1:0] term_b;
-    logic [WIDTH+1:0] term_mod;
-
-    assign a_i = a_reg[1:0];
-
-    always_comb begin
-        case (a_i)
-            2'b01:   term_b = {2'b0, b};
-            2'b10:   term_b = {2'b0, b}<<1;
-            2'b11:   term_b = b3;
-            default: term_b = '0;
-        endcase
-    end
-
-    assign q_i = ( (S[1:0] + term_b[1:0]) * mod_inv ) & 2'b11;
-
-    always_comb begin
-        case (q_i)
-            2'b01:   term_mod = {2'b0, mod};
-            2'b10:   term_mod = {2'b0, mod}<<1;
-            2'b11:   term_mod = mod3;
-            default: term_mod = '0;
-        endcase
-    end
-
-    always_ff @(posedge clk or posedge rst) begin
-        if (rst) begin
-            state <= IDLE;
-            rdy <= 1'b0;
-            result <= '0;
-            S <= '0;
-        end else begin
-            case (state)
-                IDLE: begin
-                    rdy <= 1'b0;
-                    if (req) begin
-                        a_reg <= a;
-                        mod_inv <= (mod[1]) ? 2'b01 : 2'b11; 
-                        state <= PRECOMP;
-                    end
-                end
-
-                PRECOMP: begin
-                    b3 <= ({2'b0, b} << 1) + {2'b0, b};
-                    mod3 <= ({2'b0, mod} << 1) + {2'b0, mod};
-                    S <= '0;
-                    count <= 256;
-                    state <= COMPUTE;
-                end
-
-                COMPUTE: begin
-                    if (count > 0) begin
-                        S <= (S + term_b + term_mod) >> 2;
-                        a_reg <= a_reg >> 2;
-                        count <= count - 1;
-                    end else begin
-                        state <= FINISH;
-                    end
-                end
-
-                FINISH: begin
-                    if (S >= {3'b0,mod}) begin
-                        result <= S - mod;
-                    end else begin
-                        result <= S[WIDTH-1:0];
-                    end
-                    rdy <= 1'b1;
-                    state <= IDLE;
-                end
-            endcase
-        end
-    end
-
-endmodule
-
-module modadd #( //module for addition, ctrl=1 subtraction, ctrl=0 addition
-    parameter WIDTH = 512
-)(
-    input logic ctrl,
-    input logic [WIDTH-1:0] a,
-    input logic [WIDTH-1:0] b,
-    input logic [WIDTH-1:0] mod,
-    output logic [WIDTH-1:0] result
-);
-    logic [WIDTH:0] val_1;
-    logic [WIDTH:0] val_2;
-
-    always_comb begin
-        if(ctrl) begin
-            val_1 = {1'b0,a} - {1'b0,b};
-            val_2 = val_1[WIDTH-1:0] + mod;
-            result = (a>=b) ? val_1[WIDTH-1:0] : val_2[WIDTH-1:0];
-        end else begin
-            val_1 = {1'b0,a} + {1'b0,b};
-            val_2 = val_1[WIDTH-1:0] - mod;
-            result = (val_1>={1'b0,mod}) ? val_2[WIDTH-1:0] : val_1[WIDTH-1:0];
-        end
-    end
-
-endmodule
-
-module inverse #( 
-    parameter WIDTH = 512 
-)( 
-    input  logic              clk, 
-    input  logic              rst, 
-    input  logic              req, 
-    input  logic [WIDTH-1:0]  inv_in, 
-    input  logic [WIDTH-1:0]  mod, 
-    output logic [WIDTH-1:0]  inv_out, 
-    output logic              rdy 
-); 
-
-    logic [WIDTH-1:0] u, v, x, y; 
-    
-    typedef enum logic [1:0] {IDLE, COMPUTE, DONE} state_t; 
-    state_t state; 
-
-    always_ff @(posedge clk or posedge rst) begin 
-        if (rst) begin 
-            state <= IDLE; 
-            rdy   <= 1'b0; 
-            inv_out   <= 0;
-            u <= 0; v <= 0; x <= 0; y <= 0;
-        end else begin 
-            case (state) 
-                IDLE: begin 
-                    rdy <= 1'b0; 
-                    if (req) begin 
-                        u <= inv_in; 
-                        v <= mod; 
-                        x <= 1; 
-                        y <= 0; 
-                        state <= COMPUTE; 
-                    end 
-                end 
-
-                COMPUTE: begin 
-                    if (u == 1) begin 
-                        inv_out   <= x; 
-                        state <= DONE; 
-                    end else if (v == 1) begin 
-                        inv_out   <= y; 
-                        state <= DONE; 
-                    end else begin 
-                        if (!u[0]) begin 
-                            u <= u >> 1; 
-                            // Use concatenation to prevent overflow truncation before shift
-                            if (x[0]) x <= ( x + mod ) >> 1; 
-                            else      x <= x >> 1; 
-                        end else if (!v[0]) begin 
-                            v <= v >> 1; 
-                            if (y[0]) y <= ( y + mod ) >> 1; 
-                            else      y <= y >> 1; 
-                        end else if (u >= v) begin 
-                            u <= u - v; 
-                            if (x < y) x <= (x + mod) - y; 
-                            else       x <= x - y; 
-                        end else begin 
-                            v <= v - u; 
-                            if (y < x) y <= (y + mod) - x; 
-                            else       y <= y - x; 
-                        end 
-                    end 
-                end 
-
-                DONE: begin 
-                    rdy <= 1'b1; 
-                    if (!req) state <= IDLE; 
-                end
-                
-                default: state <= IDLE;
-            endcase 
-        end 
-    end 
 endmodule

@@ -26,10 +26,15 @@ async def full_tb(dut):
     
     G = gost_512_paramA.G
     
-    for i in range(0,3):
+    for i in range(0,5):
+        print(i)
+        
         k = random.randint(0,q-1)
-    
+        
+        await RisingEdge(dut.clk)
         dut.rst.value=1
+        await RisingEdge(dut.clk)
+        await RisingEdge(dut.clk)
         await RisingEdge(dut.clk)
         dut.rst.value=0
         await RisingEdge(dut.clk)
@@ -40,7 +45,7 @@ async def full_tb(dut):
         
         dut.cs.value=1
         
-        for i in range(0,2560):
+        for j in range(0,2560):
             dut.spi_pad_MOSI.value=spi_send&1
             dut.spi_clk.value=1
             await RisingEdge(dut.clk)
@@ -50,12 +55,13 @@ async def full_tb(dut):
             await RisingEdge(dut.clk)
             spi_send=spi_send>>1
             
-        dut.spi_clk.value=1
-        await RisingEdge(dut.clk)
-        await RisingEdge(dut.clk)
-        dut.spi_clk.value=0
-        await RisingEdge(dut.clk)
-        await RisingEdge(dut.clk)
+        for j in range(0,random.randint(1,100)):
+            dut.spi_clk.value=1
+            await RisingEdge(dut.clk)
+            await RisingEdge(dut.clk)
+            dut.spi_clk.value=0
+            await RisingEdge(dut.clk)
+            await RisingEdge(dut.clk)
         
         dut.cs.value=0
         
@@ -90,6 +96,7 @@ async def full_tb(dut):
         P=k*G
         
         assert P.x == got_x and P.y == got_y, f"error P={P.x,P.y}, got = {got_x,got_y}"
+        print(f"P={P.x,P.y}, got = {got_x,got_y}")
 
 # @cocotb.test()
 # async def inverse(dut):
@@ -99,6 +106,7 @@ async def full_tb(dut):
         
 #     for i in range(0,100):
 #         a=random.randint(0,p-1)
+        
 #         ans = pow(a,p-2,p)
         
 #         dut.rst.value=1

@@ -7,7 +7,6 @@ FST ?= -fst # Use more efficient FST format
 TOPLEVEL_LANG ?= verilog
 SRC_DIR = $(PWD)/../src
 PROJECT_SOURCES += project.v top_module.sv
-COMPILE_ARGS += -Wno-fatal
 ifneq ($(GATES),yes)
 
 # RTL simulation:
