@@ -1,79 +1,186 @@
 import cocotb
-from cocotb.triggers import Timer, RisingEdge
+from cocotb.triggers import Timer, RisingEdge, FallingEdge
 from cocotb.clock import Clock
 import random
 from fastecdsa.curve import Curve
+from fastecdsa.point import Point
 
-async def set_spi_inputs(dut, cs, sclk, mosi):
-    val = 0
-    if cs:   val |= (1 << 0)
-    if sclk: val |= (1 << 1)
-    if mosi: val |= (1 << 2)
-    dut.ui_in.value = val
+def inverse(a,p):
+    return pow(a,p-2,p)
 
 @cocotb.test()
 async def full_tb(dut):
-    cocotb.start_soon(Clock(dut.clk, 10, unit="ns").start())
-    dut.ena.value = 1
     
-    p = 0x00FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFDC7
-    a = 0x00FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFDC4
-    b = 0x00E8C2505DEDFC86DDC1BD0B2B6667F1DA34B82574761CB0E879BD081CFD0B6265EE3CB090F30D27614CB4574010DA90DD862EF9D4EBEE4761503190785A71C760
-    q = 0x00FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF27E69532F48D89116FF22B8D4E0560609B4B38ABFAD2B85DCACDB1411F10B275
-    gx, gy = 0x03, 0x7503CFE87A836AE3A61B8816E25450E6CE5E1C93ACF1ABC1778064FDCBEFA921DF1626BE4FD036E93D75E6A50E3A41E98028FE5FC235F5B889A589CB5215F2A4
+    cocotb.start_soon(Clock(dut.clk, 1, unit="ns").start())
+
+    p = 0x00FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFD97
+    a = 0x00FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFD94
+    b = 0xA6
+    m = 0x00FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF6C611070995AD10045841B09B761B893
+    q = 0x00FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF6C611070995AD10045841B09B761B893
+    x = 0x01
+    y = 0x008D91E471E0989CDA27DF505A453F2B7635294F2DDF23E3B122ACC99C9E9F1E14
     
-    curve = Curve('gost_512', p, a, b, q, gx, gy)
-    G = curve.G
-
-    for iteration in range(5):
-        dut._log.info(f"--- Starting Iteration {iteration} ---")
-
-        dut.rst_n.value = 0      
-        dut.ui_in.value = 0      
-        await Timer(50, "ns")    
-        dut.rst_n.value = 1     
+    gost_256_paramB = Curve(
+        'id-tc26-gost-3410-2012-256-paramSetB', 
+        p, a, b, q, x, y
+    )
+    
+    G = gost_256_paramB.G
+    
+    for i in range(0,5):
+        print(i)
+        
+        width=256
+        first=0
+        
+        c = random.randint(0,q-1)
+        d = random.randint(0,q-1)
+        
+        P0 = 1*G
+        P1 = 2*G
+        
         await RisingEdge(dut.clk)
-        await Timer(10, "ns")
-
-        k = random.randint(1, q-1)
-        spi_send = ((G.x*(1<<512))%p) + (((G.y*(1<<512))%p)<<512) + (((a*(1<<512))%p)<<1024) + (p<<1536) + (k<<2048)
+        dut.rst_n.value=0
+        await RisingEdge(dut.clk)
+        await RisingEdge(dut.clk)
+        await RisingEdge(dut.clk)
+        dut.rst_n.value=1
+        await RisingEdge(dut.clk)
+            
+        spi_send = ((P0.x*(1<<width))%p) + (((P0.y*(1<<width))%p)<<width) + (((1*(1<<width))%p)<<(width*2)) + (((P1.x*(1<<width))%p)<<(width*3)) + (((P1.y*(1<<width))%p)<<(width*4)) + (((1*(1<<width))%p)<<(width*5)) + (((a*(1<<width))%p)<<(width*6)) + ((p)<<(width*7)) + (first << (width*8))
         
-        await set_spi_inputs(dut, cs=1, sclk=0, mosi=0)
-        await Timer(20, "ns")
+        ui_in=1
         
-        for _ in range(2560):
-            mosi_bit = spi_send & 1
-            await set_spi_inputs(dut, cs=1, sclk=0, mosi=mosi_bit)
-            await Timer(5, "ns")
-            await set_spi_inputs(dut, cs=1, sclk=1, mosi=mosi_bit)
-            await Timer(5, "ns")
-            spi_send >>= 1
-        
-        await set_spi_inputs(dut, cs=0, sclk=0, mosi=0)
-
-        while (dut.uo_out.value.integer & 0x01) == 0:
+        for j in range(0,width*8+1):
+            ui_in= 1 + (1<<1) + ((spi_send&1) <<2)
+            dut.ui_in.value=ui_in
+            await RisingEdge(dut.clk)
+            await RisingEdge(dut.clk)
+            ui_in= 1 + (0<<1) + ((spi_send&1)<<2)
+            dut.ui_in.value=ui_in
+            await RisingEdge(dut.clk)
+            await RisingEdge(dut.clk)
+            spi_send=spi_send>>1
+            
+        for j in range(0,random.randint(1,100)):
+            ui_in= 1 + 1<<1
+            dut.ui_in.value=ui_in
+            await RisingEdge(dut.clk)
+            await RisingEdge(dut.clk)
+            ui_in= 1 + 0<<1
+            dut.ui_in.value=ui_in
+            await RisingEdge(dut.clk)
             await RisingEdge(dut.clk)
         
-        got_x = 0
-        for i in range(512):
-            await set_spi_inputs(dut, cs=0, sclk=1, mosi=0)
-            await Timer(5, "ns")
-            bit = (dut.uo_out.value.integer >> 1) & 1
-            got_x |= (bit << i)
-            await set_spi_inputs(dut, cs=0, sclk=0, mosi=0)
-            await Timer(5, "ns")
-
-        got_y = 0
-        for i in range(512):
-            await set_spi_inputs(dut, cs=0, sclk=1, mosi=0)
-            await Timer(5, "ns")
-            bit = (dut.uo_out.value.integer >> 1) & 1
-            got_y |= (bit << i)
-            await set_spi_inputs(dut, cs=0, sclk=0, mosi=0)
-            await Timer(5, "ns")
-
-        expected_P = k * G
-        assert got_x == expected_P.x and got_y == expected_P.y, \
-            f"FAIL: Iteration {iteration}\nExp X: {hex(expected_P.x)}\nGot X: {hex(got_x)}"
+        ui_in=0
+        dut.ui_in.value=ui_in
         
-        dut._log.info(f"PASS: Iteration {iteration} matches fastecdsa!")
+        while (int(dut.uo_out.value)&1)!=1:
+            await RisingEdge(dut.clk)
+            
+        await RisingEdge(dut.clk)
+        
+        got_x_dub=0
+        for i in range(0,width):
+            ui_in= 1<<1
+            dut.ui_in.value=ui_in
+            await RisingEdge(dut.clk)
+            await RisingEdge(dut.clk)
+            ui_in= 0<<1
+            dut.ui_in.value=ui_in
+            await RisingEdge(dut.clk)
+            await RisingEdge(dut.clk)
+            got_bit = (int(dut.uo_out.value)>>1)&1
+            got_x_dub=(got_x_dub>>1)+(got_bit<<(width-1))
+            
+        
+        got_y_dub=0
+        for i in range(0,width):
+            ui_in= 1<<1
+            dut.ui_in.value=ui_in
+            await RisingEdge(dut.clk)
+            await RisingEdge(dut.clk)
+            ui_in= 0<<1
+            dut.ui_in.value=ui_in
+            await RisingEdge(dut.clk)
+            await RisingEdge(dut.clk)
+            got_bit = (int(dut.uo_out.value)>>1)&1
+            got_y_dub=(got_y_dub>>1)+(got_bit<<(width-1))
+            
+        got_z_dub=0
+        for i in range(0,width):
+            ui_in= 1<<1
+            dut.ui_in.value=ui_in
+            await RisingEdge(dut.clk)
+            await RisingEdge(dut.clk)
+            ui_in= 0<<1
+            dut.ui_in.value=ui_in
+            await RisingEdge(dut.clk)
+            await RisingEdge(dut.clk)
+            got_bit = (int(dut.uo_out.value)>>1)&1
+            got_z_dub=(got_z_dub>>1)+(got_bit<<(width-1))
+            
+        
+        got_x_sum=0
+        for i in range(0,width):
+            ui_in= 1<<1
+            dut.ui_in.value=ui_in
+            await RisingEdge(dut.clk)
+            await RisingEdge(dut.clk)
+            ui_in= 0<<1
+            dut.ui_in.value=ui_in
+            await RisingEdge(dut.clk)
+            await RisingEdge(dut.clk)
+            got_bit = (int(dut.uo_out.value)>>1)&1
+            got_x_sum=(got_x_sum>>1)+(got_bit<<(width-1))
+            
+        got_y_sum=0
+        for i in range(0,width):
+            ui_in= 1<<1
+            dut.ui_in.value=ui_in
+            await RisingEdge(dut.clk)
+            await RisingEdge(dut.clk)
+            ui_in= 0<<1
+            dut.ui_in.value=ui_in
+            await RisingEdge(dut.clk)
+            await RisingEdge(dut.clk)
+            got_bit = (int(dut.uo_out.value)>>1)&1
+            got_y_sum=(got_y_sum>>1)+(got_bit<<(width-1))
+            
+        
+        got_z_sum=0
+        for i in range(0,width):
+            ui_in= 1<<1
+            dut.ui_in.value=ui_in
+            await RisingEdge(dut.clk)
+            await RisingEdge(dut.clk)
+            ui_in= 0<<1
+            dut.ui_in.value=ui_in
+            await RisingEdge(dut.clk)
+            await RisingEdge(dut.clk)
+            got_bit = (int(dut.uo_out.value)>>1)&1
+            got_z_sum=(got_z_sum>>1)+(got_bit<<(width-1))
+            
+        r=1<<256
+        r_inv = inverse(r,p)
+        got_x_dub=(got_x_dub*r_inv)%p
+        got_y_dub=(got_y_dub*r_inv)%p
+        got_z_dub=(got_z_dub*r_inv)%p
+        got_x_sum=(got_x_sum*r_inv)%p
+        got_y_sum=(got_y_sum*r_inv)%p
+        got_z_sum=(got_z_sum*r_inv)%p
+          
+        z_dub = inverse(got_z_dub,p)
+        x_dub = (got_x_dub * z_dub**2)%p
+        y_dub = (got_y_dub * z_dub**3)%p
+        
+        z_sum = inverse(got_z_sum,p)
+        x_sum = (got_x_sum * z_sum**2)%p
+        y_sum = (got_y_sum * z_sum**3)%p
+        
+        P_sum = P0+P1
+        P_dub = P0+P0
+        
+        assert P_dub.x == x_dub and P_dub.y == y_dub, f"error in dub P={P_dub.x,P_dub.y}, got = {x_dub,y_dub}"
+        assert P_sum.x == x_sum and P_sum.y == y_sum, f"error in sum P={P_sum.x,P_sum.y}, got = {x_sum,y_sum}"
