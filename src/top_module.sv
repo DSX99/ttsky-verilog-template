@@ -1,5 +1,5 @@
 module top_module #(
-    parameter WIDTH = 256
+    parameter WIDTH = 64
 )(
     input logic cs,
     input logic spi_clk,
@@ -15,7 +15,6 @@ module top_module #(
     logic req, alu_rdy, start_sending, alu_mult_only, prev_spi_clk, first;
 
     always_comb begin
-        //spi_miso drive
         spi_pad_MISO=0;
         alu_mult_only=0;
         if(rdy) begin
@@ -40,6 +39,7 @@ module top_module #(
             P0_x<=0; P0_y<=0; P0_z<=569; P1_x<=0; P1_y<=0; P1_z<=569;
             a<=0; mod<=0; count_spi<=0; rdy<=0; req<=0; prev_spi_clk<=0;
             start_sending<=0;
+
         end else begin
 
             if(alu_rdy) begin
@@ -126,7 +126,7 @@ point_alu #(.WIDTH(WIDTH)) alu (
 endmodule
 
 module modadd #( //module for addition, ctrl=1 subtraction, ctrl=0 addition
-    parameter WIDTH = 256
+    parameter WIDTH = 64
 )(
     input logic ctrl,
     input logic [WIDTH-1:0] a,
@@ -152,7 +152,7 @@ module modadd #( //module for addition, ctrl=1 subtraction, ctrl=0 addition
 endmodule
 
 module modmul#( // radix 4 montgomery multiplication, requires a and b be in a*R form alreadt
-    parameter WIDTH = 256
+    parameter WIDTH = 64
 )(
     input  logic              clk,
     input  logic              rst,
@@ -178,7 +178,7 @@ module modmul#( // radix 4 montgomery multiplication, requires a and b be in a*R
     logic [WIDTH+1:0] b3;
     logic [WIDTH+1:0] mod3; 
     logic [1:0] mod_inv;
-    logic [$clog2(WIDTH)-1:0] count;
+    logic [$clog2(WIDTH/2):0] count;
 
     logic [1:0] a_i;
     logic [1:0] q_i;
@@ -228,7 +228,7 @@ module modmul#( // radix 4 montgomery multiplication, requires a and b be in a*R
                     b3 <= ({2'b0, b} << 1) + {2'b0, b};
                     mod3 <= ({2'b0, mod} << 1) + {2'b0, mod};
                     S <= '0;
-                    count <= 8'(WIDTH / 2);
+                    count <= 6'(WIDTH / 2);
                     state <= COMPUTE;
                 end
 
@@ -258,7 +258,7 @@ module modmul#( // radix 4 montgomery multiplication, requires a and b be in a*R
 endmodule
 
 module point_alu #(
-    parameter WIDTH = 256
+    parameter WIDTH = 64
 )(
     input  logic              clk,
     input  logic              rst,
