@@ -9,16 +9,15 @@ module top_module #(
     output logic spi_pad_MISO
 );
 
-    logic [WIDTH-1:0] P0_x,P0_y,P0_z,P1_x,P1_y,P1_z,sum_x,sum_y,sum_z,dub_x,dub_y,dub_z;
-    logic [WIDTH-1:0] a,mod,k,summed_x,summed_y,summed_z,dubbed_x,dubbed_y,dubbed_z;
+    logic [WIDTH-1:0] P0_x,P0_y,P0_z,P1_x,P1_y,P1_z;
+    logic [WIDTH-1:0] a,mod,summed_x,summed_y,summed_z,dubbed_x,dubbed_y,dubbed_z;
     logic [$clog2(WIDTH)+5:0] count_spi;
-    logic [$clog2(WIDTH)-1:0] count;
-    logic [3:0] state;
-    logic req, alu_rdy, start_sending, sent, alu_mult_only, prev_spi_clk, first;
+    logic req, alu_rdy, start_sending, alu_mult_only, prev_spi_clk, first;
 
     always_comb begin
         //spi_miso drive
         spi_pad_MISO=0;
+        alu_mult_only=0;
         if(rdy) begin
             if(count_spi<WIDTH)begin
                 spi_pad_MISO=P0_x[0];
@@ -40,7 +39,7 @@ module top_module #(
         if(rst)begin
             P0_x<=0; P0_y<=0; P0_z<=569; P1_x<=0; P1_y<=0; P1_z<=569;
             a<=0; mod<=0; count_spi<=0; rdy<=0; req<=0; prev_spi_clk<=0;
-            sent<=0; start_sending<=0;
+            start_sending<=0;
         end else begin
 
             if(alu_rdy) begin
@@ -127,7 +126,7 @@ point_alu #(.WIDTH(WIDTH)) alu (
 endmodule
 
 module modadd #( //module for addition, ctrl=1 subtraction, ctrl=0 addition
-    parameter WIDTH = 512
+    parameter WIDTH = 256
 )(
     input logic ctrl,
     input logic [WIDTH-1:0] a,
@@ -153,7 +152,7 @@ module modadd #( //module for addition, ctrl=1 subtraction, ctrl=0 addition
 endmodule
 
 module modmul#( // radix 4 montgomery multiplication, requires a and b be in a*R form alreadt
-    parameter WIDTH = 512
+    parameter WIDTH = 256
 )(
     input  logic              clk,
     input  logic              rst,
@@ -179,7 +178,7 @@ module modmul#( // radix 4 montgomery multiplication, requires a and b be in a*R
     logic [WIDTH+1:0] b3;
     logic [WIDTH+1:0] mod3; 
     logic [1:0] mod_inv;
-    logic [$clog2(WIDTH/2):0] count;
+    logic [$clog2(WIDTH)-1:0] count;
 
     logic [1:0] a_i;
     logic [1:0] q_i;
@@ -259,7 +258,7 @@ module modmul#( // radix 4 montgomery multiplication, requires a and b be in a*R
 endmodule
 
 module point_alu #(
-    parameter WIDTH = 512
+    parameter WIDTH = 256
 )(
     input  logic              clk,
     input  logic              rst,
@@ -282,9 +281,9 @@ module point_alu #(
 
     logic [WIDTH-1:0] mem [0:10];
     logic [1:0] done_flags;
-    logic [1:0] sent=0;
+    logic [1:0] sent;
 
-    logic [4:0] state=0;
+    logic [4:0] state;
 
     always_comb begin    
         
