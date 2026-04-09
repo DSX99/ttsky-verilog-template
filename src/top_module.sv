@@ -9,35 +9,23 @@ module top_module #(
     output logic spi_pad_MISO
 );
 
-    logic [WIDTH-1:0] mem [8:0];
+    logic [WIDTH-1:0] mem [9:0];
     logic [WIDTH+1:0] extmem[1:0];
-    logic [WIDTH-1:0] mod;
     logic [$clog2(WIDTH)+4:0] count_spi;
     logic start_sending, prev_spi_clk;
     logic [1:0] mem_set;
     logic [4:0] state, return_state;
-    logic [3:0] roll;
+    logic [3:0] roll, spi_slot;
     logic req, save_a, save_b, sent;
 
     always_comb begin 
-        spi_pad_MISO=0;
-        if(rdy) begin
-            if(count_spi<WIDTH) spi_pad_MISO=mem[0][0];
-            else if(count_spi<2*WIDTH) spi_pad_MISO=mem[1][0];
-            else if(count_spi<3*WIDTH) spi_pad_MISO=mem[2][0];
-            else if(count_spi<4*WIDTH) spi_pad_MISO=mem[3][0];
-            else if(count_spi<5*WIDTH) spi_pad_MISO=mem[4][0];
-            else if(count_spi<6*WIDTH) spi_pad_MISO=mem[5][0];
-            else if(count_spi<7*WIDTH) spi_pad_MISO=mem[6][0];
-            else if(count_spi<8*WIDTH) spi_pad_MISO=mem[7][0];
-            else if(count_spi<9*WIDTH) spi_pad_MISO=mem[8][0];
-        end
+        spi_pad_MISO=mem[spi_slot][0];
     end
 
     always_ff @(posedge clk or posedge rst) begin
         if(rst) begin
-            mem[0]<=0;mem[1]<=0;mem[2]<=0;mem[3]<=0;mem[4]<=0;mem[5]<=0;mem[6]<=0;mem[7]<=0;mem[8]<=0;extmem[1]<=0;extmem[0]<=0;
-            mod<=0; count_spi<=0; start_sending<=0; prev_spi_clk<=0; rdy<=0;
+            mem[0]<=0;mem[1]<=0;mem[2]<=0;mem[3]<=0;mem[4]<=0;mem[5]<=0;mem[6]<=0;mem[7]<=0;mem[8]<=0;mem[9]<=0;extmem[1]<=0;extmem[0]<=0;
+            count_spi<=0; start_sending<=0; prev_spi_clk<=0; rdy<=0; spi_slot<=0;
             mem_set<=0; return_state<=0; req<=0; roll<=0;
             save_a<=0; save_b<=0; state<=0; sent<=0;
             add_ctrl<=0;
@@ -428,38 +416,6 @@ module top_module #(
                         end
                     endcase
                 end
-                12:begin
-                    case(mem_set)
-                        0: begin
-                            return_state<=state;
-                            roll<=2;
-                            mem_set<=1;
-                        end
-                        1: begin
-                            roll<=5;
-                            mem_set<=2;
-                        end
-                        2: begin
-                            roll<=4;
-                            mem_set<=3;
-                        end
-                        3: begin
-                            if(~sent) begin 
-                                mult_req<=1;
-                                sent<=1;
-                            end else begin
-                                mult_req<=0;
-                            end
-                            if(mult_rdy) begin
-                                mem[0]<=256'(extmem[0]);
-                                roll<=7;
-                                state<=1;
-                                mem_set<=0;
-                                sent<=0;
-                            end
-                        end
-                    endcase
-                end
                 13:begin
                     case(mem_set)
                         0: begin
@@ -666,60 +622,39 @@ module top_module #(
             if(spi_clk & spi_clk!=prev_spi_clk) begin
                 if(cs & !start_sending) begin
                     count_spi<=count_spi+1;
-                    if(count_spi<WIDTH) begin
-                        mem[0]<=mem[0]>>1;
-                        mem[0][WIDTH-1]<=spi_pad_MOSI;
-                    end else if(count_spi<2*WIDTH) begin
-                        mem[1]<=mem[1]>>1;
-                        mem[1][WIDTH-1]<=spi_pad_MOSI;
-                    end else if(count_spi<3*WIDTH) begin
-                        mem[2]<=mem[2]>>1;
-                        mem[2][WIDTH-1]<=spi_pad_MOSI;
-                    end else if(count_spi<4*WIDTH) begin
-                        mem[3]<=mem[3]>>1;
-                        mem[3][WIDTH-1]<=spi_pad_MOSI;
-                    end else if(count_spi<5*WIDTH) begin
-                        mem[4]<=mem[4]>>1;
-                        mem[4][WIDTH-1]<=spi_pad_MOSI;
-                    end else if(count_spi<6*WIDTH) begin
-                        mem[5]<=mem[5]>>1;
-                        mem[5][WIDTH-1]<=spi_pad_MOSI;
-                    end else if(count_spi<7*WIDTH) begin
-                        mem[6]<=mem[6]>>1;
-                        mem[6][WIDTH-1]<=spi_pad_MOSI;
-                    end else if(count_spi<8*WIDTH) begin
-                        mem[7]<=mem[7]>>1;
-                        mem[7][WIDTH-1]<=spi_pad_MOSI;
-                    end else if(count_spi<9*WIDTH) begin
-                        mem[8]<=mem[8]>>1;
-                        mem[8][WIDTH-1]<=spi_pad_MOSI;
-                    end else if(count_spi<10*WIDTH) begin
-                        mod<=mod>>1;
-                        mod[WIDTH-1]<=spi_pad_MOSI;
-                    end else if(count_spi==10*WIDTH) begin
-                        req<=1;
-                    end else begin
-                        req<=0;
+                    if(count_spi==255) begin
+                        count_spi<=0;
+                        spi_slot<=spi_slot+1;
+                    end
+
+                    mem[spi_slot]<=mem[spi_slot]>>1;
+                    mem[spi_slot][WIDTH-1]<=spi_pad_MOSI;
+
+                    if(spi_slot==10)begin
+                        if(count_spi==0) req<=1;
+                        else req<=0;
                     end
                 end else begin
                     count_spi<=0;
+                    spi_slot<=0;
                 end
                 if(rdy) begin
                     count_spi<=count_spi+1;
                     if(!start_sending) begin
+                        spi_slot<=0;
                         count_spi<=0;
                         start_sending<=1;
                     end else begin
-                        if(count_spi<WIDTH) mem[0]<={mem[0][0],mem[0][WIDTH-1:1]};
-                        else if(count_spi<2*WIDTH) mem[1]<={mem[1][0],mem[1][WIDTH-1:1]};
-                        else if(count_spi<3*WIDTH) mem[2]<={mem[2][0],mem[2][WIDTH-1:1]};
-                        else if(count_spi<4*WIDTH) mem[3]<={mem[3][0],mem[3][WIDTH-1:1]};
-                        else if(count_spi<5*WIDTH) mem[4]<={mem[4][0],mem[4][WIDTH-1:1]};
-                        else if(count_spi<6*WIDTH) mem[5]<={mem[5][0],mem[5][WIDTH-1:1]};
-                        else if(count_spi<7*WIDTH) mem[6]<={mem[6][0],mem[6][WIDTH-1:1]};
-                        else if(count_spi<8*WIDTH) mem[7]<={mem[7][0],mem[7][WIDTH-1:1]};
-                        else if(count_spi<9*WIDTH) mem[8]<={mem[8][0],mem[8][WIDTH-1:1]};
-                        else rdy<=0;
+                        if(count_spi==255) begin
+                            count_spi<=0;
+                            spi_slot<=spi_slot+1;
+                        end
+
+                        mem[spi_slot]<={mem[spi_slot][0],mem[spi_slot][WIDTH-1:1]};
+
+                        if(spi_slot==9)begin
+                            rdy<=0;
+                        end
                     end
                 end
             end
@@ -773,12 +708,8 @@ module top_module #(
     logic [$clog2(WIDTH):0] count;
     logic prev_req, mult_req, mult_rdy;
 
-    logic [WIDTH-1:0] add_out, add_mod;
+    logic [WIDTH-1:0] add_out;
     logic add_ctrl;
-
-    always_comb begin
-        add_mod=mod;
-    end
 
     //modadd
 
@@ -788,12 +719,12 @@ module top_module #(
     always_comb begin
         if(add_ctrl) begin
             val_1 = 257'({1'b0,extmem[0]} - {1'b0,extmem[1]});
-            val_2 = val_1[WIDTH-1:0] + add_mod;
+            val_2 = val_1[WIDTH-1:0] + mem[9];
             add_out = (extmem[1]>=extmem[0]) ? val_2[WIDTH-1:0] : val_1[WIDTH-1:0];
         end else begin
             val_1 = 257'({1'b0,extmem[0]} + {1'b0,extmem[1]});
-            val_2 = val_1[WIDTH-1:0] - add_mod;
-            add_out = (val_1>={1'b0,add_mod}) ? val_2[WIDTH-1:0] : val_1[WIDTH-1:0];
+            val_2 = val_1[WIDTH-1:0] - mem[9];
+            add_out = (val_1>={1'b0,mem[9]}) ? val_2[WIDTH-1:0] : val_1[WIDTH-1:0];
         end
     end
 
