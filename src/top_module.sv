@@ -726,7 +726,7 @@ module top_module #(
     logic [$clog2(WIDTH):0] count;
     logic prev_req, mult_req, mult_rdy;
 
-    logic [WIDTH-1:0] add_a,add_b,add_out, add_mod;
+    logic [WIDTH-1:0] add_out, add_mod;
     logic add_ctrl;
 
     always_comb begin
@@ -796,7 +796,7 @@ module top_module #(
     //modadd
 
     logic [WIDTH:0] val_1;
-    logic [WIDTH:0] val_2;
+    logic [WIDTH-1:0] val_2;
 
     always_comb begin
         if(add_ctrl) begin
