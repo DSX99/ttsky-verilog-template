@@ -40,6 +40,14 @@ module top_module #(
             mod<=0; count_spi<=0; start_sending<=0; prev_spi_clk<=0; rdy<=0;
             mem_set<=0; return_state<=0; req<=0; roll<=0;
             save_a<=0; save_b<=0; state<=0; sent<=0;
+            add_ctrl<=0;
+            mult_req<=0;
+            prev_req<=0;
+            state_mul    <= 0;
+            count    <= 0;
+            mult_rdy      <= 0;
+            mult_mem_a<=0;
+            mult_mem_b<=0;
         end else begin
             if(state!=1 & state!=0) begin
                 case(mem_set)
@@ -715,43 +723,6 @@ module top_module #(
                     end
                 end
             end
-        end
-    end
-
-
-    // modmul stuff
-
-    logic [2:0]            state_mul;
-    logic [WIDTH-1:0]      mult_mem_a, mult_mem_b;
-    logic [$clog2(WIDTH):0] count;
-    logic prev_req, mult_req, mult_rdy;
-
-    logic [WIDTH-1:0] add_out, add_mod;
-    logic add_ctrl;
-
-    always_comb begin
-        add_mod=mod;
-        case(state_mul)
-            2: begin
-                add_mod = mod;
-            end
-            4: begin
-                add_mod = mod;
-            end
-        endcase
-    end
-
-    always @(posedge clk or posedge rst) begin
-        if (rst) begin
-            add_ctrl<=0;
-            mult_req<=0;
-            prev_req<=0;
-            state_mul    <= 0;
-            count    <= 0;
-            mult_rdy      <= 0;
-            mult_mem_a<=0;
-            mult_mem_b<=0;
-        end else begin
             case (state_mul)
                 0: begin
                     prev_req<=mult_req;
@@ -791,6 +762,22 @@ module top_module #(
                 end
             endcase
         end
+            
+    end
+
+
+    // modmul stuff
+
+    logic [2:0]            state_mul;
+    logic [WIDTH-1:0]      mult_mem_a, mult_mem_b;
+    logic [$clog2(WIDTH):0] count;
+    logic prev_req, mult_req, mult_rdy;
+
+    logic [WIDTH-1:0] add_out, add_mod;
+    logic add_ctrl;
+
+    always_comb begin
+        add_mod=mod;
     end
 
     //modadd
