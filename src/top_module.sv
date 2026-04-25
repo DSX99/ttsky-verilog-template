@@ -5,6 +5,7 @@ module top_module #(
     input logic spi_clk,
     input logic spi_pad_MOSI,
     input logic clk,rst,
+    input logic [1:0] do_operation,
     output logic rdy,
     output logic spi_pad_MISO
 );
@@ -12,20 +13,21 @@ module top_module #(
     logic [WIDTH-1:0] mem [9:0];
     logic [WIDTH+1:0] extmem[1:0];
     logic [$clog2(WIDTH)+4:0] count_spi;
-    logic start_sending, prev_spi_clk;
+    logic start_sending, prev_spi_clk, start_receiving;
     logic [1:0] mem_set;
     logic [4:0] state, return_state;
     logic [3:0] roll, spi_slot;
     logic req, save_a, save_b, sent;
 
     always_comb begin 
-        spi_pad_MISO=mem[spi_slot][0];
+        if(spi_slot<=9) spi_pad_MISO=mem[spi_slot][0];
+        else spi_pad_MISO=0;
     end
 
     always_ff @(posedge clk or posedge rst) begin
         if(rst) begin
             mem[0]<=0;mem[1]<=0;mem[2]<=0;mem[3]<=0;mem[4]<=0;mem[5]<=0;mem[6]<=0;mem[7]<=0;mem[8]<=0;mem[9]<=0;extmem[1]<=0;extmem[0]<=0;
-            count_spi<=0; start_sending<=0; prev_spi_clk<=0; rdy<=0; spi_slot<=0;
+            count_spi<=0; start_sending<=0; prev_spi_clk<=0; rdy<=0; spi_slot<=0; start_receiving<=0;
             mem_set<=0; return_state<=0; req<=0; roll<=0;
             save_a<=0; save_b<=0; state<=0; sent<=0;
             add_ctrl<=0;
@@ -37,7 +39,7 @@ module top_module #(
             mult_mem_a<=0;
             mult_mem_b<=0;
         end else begin
-            if(state!=1 & state!=0) begin
+            if(state!=1 & state!=0 & state<20) begin
                 case(mem_set)
                     0: begin
                         save_a<=1;
@@ -67,7 +69,20 @@ module top_module #(
                 0:begin
                     if(req) begin
                         rdy<=0;
-                        state<=2;
+                        case(do_operation)
+                            0:begin
+                                state<=2; // normal alu
+                            end
+                            1:begin
+                                state<=21; //mult
+                            end
+                            2:begin
+                                state<=22; //add
+                            end
+                            3:begin
+                                state<=23; //sub
+                            end
+                        endcase
                     end
                 end
                 1:begin //state to rotate mems
@@ -111,7 +126,7 @@ module top_module #(
                                 mult_req<=0;
                             end
                             if(mult_rdy) begin
-                                mem[0]<=256'(extmem[0]);
+                                mem[0]<=WIDTH'(extmem[0]);
                                 roll<=5;
                                 state<=1;
                                 mem_set<=0;
@@ -215,7 +230,7 @@ module top_module #(
                                 mult_req<=0;
                             end
                             if(mult_rdy) begin
-                                mem[0]<=256'(extmem[0]);
+                                mem[0]<=WIDTH'(extmem[0]);
                                 roll<=3;
                                 state<=1;
                                 mem_set<=0;
@@ -247,7 +262,7 @@ module top_module #(
                                 mult_req<=0;
                             end
                             if(mult_rdy) begin
-                                mem[0]<=256'(extmem[0]);
+                                mem[0]<=WIDTH'(extmem[0]);
                                 roll<=2;
                                 state<=1;
                                 mem_set<=0;
@@ -279,7 +294,7 @@ module top_module #(
                                 mult_req<=0;
                             end
                             if(mult_rdy) begin
-                                mem[0]<=256'(extmem[0]);
+                                mem[0]<=WIDTH'(extmem[0]);
                                 roll<=1;
                                 state<=1;
                                 mem_set<=0;
@@ -311,7 +326,7 @@ module top_module #(
                                 mult_req<=0;
                             end
                             if(mult_rdy) begin
-                                mem[0]<=256'(extmem[0]);
+                                mem[0]<=WIDTH'(extmem[0]);
                                 roll<=0;
                                 state<=1;
                                 mem_set<=0;
@@ -343,7 +358,7 @@ module top_module #(
                                 mult_req<=0;
                             end
                             if(mult_rdy) begin
-                                mem[0]<=256'(extmem[0]);
+                                mem[0]<=WIDTH'(extmem[0]);
                                 roll<=8;
                                 state<=1;
                                 mem_set<=0;
@@ -375,7 +390,7 @@ module top_module #(
                                 mult_req<=0;
                             end
                             if(mult_rdy) begin
-                                mem[0]<=256'(extmem[0]);
+                                mem[0]<=WIDTH'(extmem[0]);
                                 roll<=7;
                                 state<=1;
                                 mem_set<=0;
@@ -407,7 +422,7 @@ module top_module #(
                                 mult_req<=0;
                             end
                             if(mult_rdy) begin
-                                mem[0]<=256'(extmem[0]);
+                                mem[0]<=WIDTH'(extmem[0]);
                                 roll<=7;
                                 state<=1;
                                 mem_set<=0;
@@ -512,7 +527,7 @@ module top_module #(
                                 mult_req<=0;
                             end
                             if(mult_rdy) begin
-                                mem[0]<=256'(extmem[0]);
+                                mem[0]<=WIDTH'(extmem[0]);
                                 roll<=3;
                                 state<=1;
                                 mem_set<=0;
@@ -545,7 +560,7 @@ module top_module #(
                                 mult_req<=0;
                             end
                             if(mult_rdy) begin
-                                mem[0]<=256'(extmem[0]);
+                                mem[0]<=WIDTH'(extmem[0]);
                                 roll<=5;
                                 state<=1;
                                 mem_set<=0;
@@ -602,7 +617,7 @@ module top_module #(
                                 mult_req<=0;
                             end
                             if(mult_rdy) begin
-                                mem[0]<=256'(extmem[0]);
+                                mem[0]<=WIDTH'(extmem[0]);
                                 roll<=5;
                                 state<=1;
                                 mem_set<=0;
@@ -615,18 +630,145 @@ module top_module #(
                     rdy<=1;
                     state<=0;
                 end
+                21:begin
+                    case(mem_set)
+                        0: begin
+                            return_state<=state;
+                            roll<=0;
+                            mem_set<=1;
+                            add_ctrl<=1;
+                            save_a<=1;
+                            save_b<=0;
+                            state<=1;
+                            mem_set<=1;
+                        end
+                        1: begin
+                            roll<=1;
+                            mem_set<=2;
+                            save_a<=0;
+                            save_b<=1;
+                            state<=1;
+                            mem_set<=2;
+                        end
+                        2: begin
+                            roll<=1;
+                            mem_set<=3;
+                            save_a<=0;
+                            save_b<=0;
+                            state<=1;
+                            mem_set<=3;
+                        end
+                        3: begin
+                            if(~sent) begin 
+                                mult_req<=1;
+                                sent<=1;
+                            end else begin
+                                mult_req<=0;
+                            end
+                            if(mult_rdy) begin
+                                return_state<=0;
+                                mem[0]<=WIDTH'(extmem[0]);
+                                roll<=7;
+                                state<=1;
+                                mem_set<=0;
+                                sent<=0;
+                                rdy<=1;
+                            end
+                        end
+                    endcase
+                end
+                22:begin
+                    case(mem_set)
+                        0: begin
+                            return_state<=state;
+                            roll<=0;
+                            mem_set<=1;
+                            add_ctrl<=0;
+                            save_a<=1;
+                            save_b<=0;
+                            state<=1;
+                            mem_set<=1;
+                        end
+                        1: begin
+                            roll<=1;
+                            mem_set<=2;
+                            save_a<=0;
+                            save_b<=1;
+                            state<=1;
+                            mem_set<=2;
+                        end
+                        2: begin
+                            roll<=1;
+                            mem_set<=3;
+                            save_a<=0;
+                            save_b<=0;
+                            state<=1;
+                            mem_set<=3;
+                        end
+                        3: begin
+                            return_state<=0;
+                            mem[0]<=add_out;
+                            roll<=7;
+                            state<=1;
+                            mem_set<=0;
+                            rdy<=1;
+                        end
+                    endcase
+                end
+                23:begin
+                    case(mem_set)
+                        0: begin
+                            return_state<=state;
+                            roll<=0;
+                            mem_set<=1;
+                            add_ctrl<=1;
+                            save_a<=1;
+                            save_b<=0;
+                            state<=1;
+                            mem_set<=1;
+                        end
+                        1: begin
+                            roll<=1;
+                            mem_set<=2;
+                            save_a<=0;
+                            save_b<=1;
+                            state<=1;
+                            mem_set<=2;
+                        end
+                        2: begin
+                            roll<=1;
+                            mem_set<=3;
+                            save_a<=0;
+                            save_b<=0;
+                            state<=1;
+                            mem_set<=3;
+                        end
+                        3: begin
+                            return_state<=0;
+                            mem[0]<=add_out;
+                            roll<=7;
+                            state<=1;
+                            mem_set<=0;
+                            rdy<=1;
+                        end
+                    endcase
+                end
             endcase
 
+            if(!cs) begin
+                start_receiving<=0;
+                req<=0;
+            end
             if(spi_clk | !spi_clk) prev_spi_clk<=spi_clk;
 
             if(spi_clk & spi_clk!=prev_spi_clk) begin
                 if(cs & !start_sending) begin
+                    start_receiving<=1;
                     count_spi<=count_spi+1;
-                    if(count_spi==255) begin
+                    if(count_spi==WIDTH-1) begin
                         count_spi<=0;
                         spi_slot<=spi_slot+1;
                     end
-
                     mem[spi_slot]<=mem[spi_slot]>>1;
                     mem[spi_slot][WIDTH-1]<=spi_pad_MOSI;
 
@@ -634,22 +776,23 @@ module top_module #(
                         if(count_spi==0) req<=1;
                         else req<=0;
                     end
-                end else begin
+                end else req<=0;
+                if(!cs & !start_sending) begin
                     count_spi<=0;
                     spi_slot<=0;
                 end
-                if(rdy) begin
+                if(rdy & !start_receiving) begin
                     count_spi<=count_spi+1;
                     if(!start_sending) begin
                         spi_slot<=0;
                         count_spi<=0;
                         start_sending<=1;
                     end else begin
-                        if(count_spi==255) begin
+                        if(count_spi==WIDTH-1) begin
                             count_spi<=0;
                             spi_slot<=spi_slot+1;
                         end
-
+                        
                         mem[spi_slot]<={mem[spi_slot][0],mem[spi_slot][WIDTH-1:1]};
 
                         if(spi_slot==9)begin
@@ -663,8 +806,8 @@ module top_module #(
                     prev_req<=mult_req;
                     mult_rdy<=0;
                     if (mult_req & ~prev_req) begin
-                        mult_mem_a<=256'(extmem[0]);
-                        mult_mem_b<=256'(extmem[1]);
+                        mult_mem_a<=WIDTH'(extmem[0]);
+                        mult_mem_b<=WIDTH'(extmem[1]);
                         extmem[0]<=0;
                         count <= 0;
                         state_mul <= 1;
@@ -677,20 +820,17 @@ module top_module #(
                 end
                 2: begin
                     extmem[0] <= {2'b0,add_out};
+                    extmem[1] <= mult_mem_b[WIDTH-1] ? {2'b0,mult_mem_a} : 0;
+                    mult_mem_b<=mult_mem_b<<1;
                     count<=count+1;
                     state_mul<=3;
                 end
                 3: begin
-                    extmem[1] <= mult_mem_b[WIDTH-1] ? {2'b0,mult_mem_a} : 0;
-                    mult_mem_b<=mult_mem_b<<1;
-                    state_mul<=4;
-                end
-                4: begin
                     extmem[0]<= {2'b0,add_out};
-                    if(count == WIDTH) state_mul<=5;
+                    if(count == WIDTH) state_mul<=4;
                     else state_mul<=1;
                 end
-                5: begin
+                4: begin
                     mult_rdy<=1;
                     state_mul<=0;
                     prev_req<=mult_req;
@@ -718,11 +858,11 @@ module top_module #(
 
     always_comb begin
         if(add_ctrl) begin
-            val_1 = 257'({1'b0,extmem[0]} - {1'b0,extmem[1]});
+            val_1 = (WIDTH+1)'({1'b0,extmem[0]} - {1'b0,extmem[1]});
             val_2 = val_1[WIDTH-1:0] + mem[9];
             add_out = (extmem[1]>=extmem[0]) ? val_2[WIDTH-1:0] : val_1[WIDTH-1:0];
         end else begin
-            val_1 = 257'({1'b0,extmem[0]} + {1'b0,extmem[1]});
+            val_1 = (WIDTH+1)'({1'b0,extmem[0]} + {1'b0,extmem[1]});
             val_2 = val_1[WIDTH-1:0] - mem[9];
             add_out = (val_1>={1'b0,mem[9]}) ? val_2[WIDTH-1:0] : val_1[WIDTH-1:0];
         end
