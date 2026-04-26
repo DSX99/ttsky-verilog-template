@@ -9,7 +9,7 @@ module top_module #(
     output logic spi_pad_MISO
 );
 
-    logic [WIDTH:0] mid,add_out_1,add_out_2,add_out_3;
+    logic [WIDTH:0] mid;
     logic [WIDTH-1:0] P0_x,P0_y,P0_z,P1_x,P1_y,P1_z,sum_x,sum_y,sum_z,dub_x,dub_y,dub_z,add_out;
     logic [WIDTH-1:0] a,mod,k,summed_x,summed_y,summed_z,dubbed_x,dubbed_y,dubbed_z, inv_in, inv_out, mult_a, mult_b, mult_out;
     logic [$clog2(WIDTH)+2:0] count_spi;
@@ -562,7 +562,7 @@ module modadd #( //module for addition, ctrl=1 subtraction, ctrl=0 addition
     output logic [WIDTH-1:0] result
 );
     logic [WIDTH:0] val_1;
-    logic [WIDTH:0] val_2;
+    logic [WIDTH-1:0] val_2;
 
     always_comb begin
         if(ctrl) begin
@@ -708,9 +708,9 @@ module point_alu #(
 
     logic [WIDTH-1:0] mem [0:10];
     logic [1:0] done_flags;
-    logic [1:0] sent=0;
+    logic [1:0] sent;
 
-    logic [4:0] state=0;
+    logic [4:0] state;
 
     always_comb begin    
         
