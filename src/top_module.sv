@@ -712,7 +712,14 @@ module point_alu #(
 
     logic [4:0] state;
 
-    always_comb begin    
+    always_comb begin 
+        Pd_x=0;
+        Pd_y=0;
+        Pd_z=0;
+        Psum_x=0;
+        Psum_y=0;
+        Psum_z=0;
+           
         
         if(rdy) begin
             Pd_x = mem[2]; Pd_y = mem[3]; Pd_z = mem[4];
