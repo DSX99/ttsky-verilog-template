@@ -730,13 +730,10 @@ module point_alu #(
             end
         end
 
-        mult_req[0] = 0; mult_a[0] = '0; mult_b[0] = '0;
-        mult_req[1] = 0; mult_a[1] = '0; mult_b[1] = '0;
-
         mult_a[0] = 0;   mult_b[0] = 0;   mult_req[0] = 0;
         mult_a[1] = 0;   mult_b[1] = 0;   mult_req[1] = 0;
-        add_a[0]  = 0; add_b[0] = 0;
-        add_a[1]  = 0; add_b[1] = 0;
+        add_a[0]  = 0; add_b[0] = 0; add_ctrl[0] = 0;
+        add_a[1]  = 0; add_b[1] = 0; add_ctrl[1] = 0;
 
         case(state)
             0: begin
