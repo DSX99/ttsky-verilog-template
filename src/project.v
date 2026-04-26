@@ -24,7 +24,7 @@ module tt_um_example (
   wire _unused = &{ena, ui_in, uio_in};
 
   top_module #(.WIDTH(256)) ecc (
-    .cs(ui_in[0]), .spi_clk(ui_in[1]), .spi_pad_MOSI(ui_in[2]), .do_operation(ui_in[4:3]),
+    .cs(ui_in[0]), .spi_clk(ui_in[1]), .spi_pad_MOSI(ui_in[2]),
     .clk(clk), .rst(~rst_n), .rdy(uo_out[0]), .spi_pad_MISO(uo_out[1])
   );
 
